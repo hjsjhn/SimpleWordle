@@ -38,6 +38,7 @@ fn test_04_5_pts_continue_game_and_statistics() {
     TestCase::read("04_02_statistics_2").run_and_compare_result();
 }
 
+/*
 #[test]
 #[timeout(3000)]
 fn test_05_5_pts_specify_offset_and_seed() {
@@ -77,3 +78,4 @@ fn test_08_5_pts_config_file() {
     // override config in command line options
     TestCase::read("08_02_config_override").run_and_compare_result();
 }
+*/
