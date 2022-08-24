@@ -51,6 +51,15 @@ impl std::fmt::Display for ArgsErr<'_> {
 impl std::error::Error for ArgsErr<'_> {}
 
 
+enum Color {
+    Red,
+    Green,
+    Blue,
+    Yellow,
+    Nothing,
+}
+
+
 #[derive(Copy)]
 #[derive(Clone)]
 #[derive(Debug)]
@@ -72,12 +81,12 @@ impl AlphStatus {
         }
     }
 
-    fn parse2(&self) -> u32 { //parse for getting color code (None,R,G,B,Y)->(0,1,2,3,4)
+    fn parse2(&self) -> Color { //parse for getting color code (None,R,G,B,Y)->(0,1,2,3,4)
         match &self {
-            AlphStatus::Right => 2, //Green
-            AlphStatus::PosWrong => 4, //Yellow
-            AlphStatus::TooMany => 1, //Red
-            AlphStatus::Unknown => 0, //None
+            AlphStatus::Right => Color::Green,
+            AlphStatus::PosWrong => Color::Yellow,
+            AlphStatus::TooMany => Color::Red,
+            AlphStatus::Unknown => Color::Nothing,
         }
     }
 
@@ -106,19 +115,18 @@ impl Wordle {
     const SEED: u64 = 19260817998244353;
     const ALPHABET: &'static str = "abcdefghijklmnopqrstuvwxyz";
 
-    fn printall(pln: bool, words: &str, tty: bool, bold: Option<bool>, color: Option<u32>) {
+    fn printall(pln: bool, words: &str, tty: bool, bold: Option<bool>, color: Option<Color>) {
         if tty {
             // color: 0->nothing 1->red 2->green 3->blue 4->yellow
             let bd: bool = bold.unwrap_or(false);
-            let mut col: u32 = color.unwrap_or(0);
-            if col > 4 { col = 0; }
+            let mut col: Color = color.unwrap_or(Color::Nothing);
             let mut stl = console::style(words.to_string());
             if bd { stl = stl.bold(); }
             match col {
-                1 => stl = stl.red(),
-                2 => stl = stl.green(),
-                3 => stl = stl.blue(),
-                4 => stl = stl.yellow(),
+                Color::Red => stl = stl.red(),
+                Color::Green => stl = stl.green(),
+                Color::Blue => stl = stl.blue(),
+                Color::Yellow => stl = stl.yellow(),
                 _ => {},
             };
             match pln {
@@ -129,11 +137,11 @@ impl Wordle {
         }
     }
 
-    fn println(words: &str, tty: bool, bold: Option<bool>, color: Option<u32>) {
+    fn println(words: &str, tty: bool, bold: Option<bool>, color: Option<Color>) {
         Wordle::printall(true, words, tty, bold, color);
     }
 
-    fn print(words: &str, tty: bool, bold: Option<bool>, color: Option<u32>) {
+    fn print(words: &str, tty: bool, bold: Option<bool>, color: Option<Color>) {
         Wordle::printall(false, words, tty, bold, color);
     }
 
@@ -207,14 +215,14 @@ impl Wordle {
         loop {
             cnt = cnt + 1;
             let mut input_word = String::new();
-            Wordle::print(&format!("Start Guessing({}): ", Wordle::trans_to_onum(cnt)).to_string(), self.tty, Some(true), Some(3));
+            Wordle::print(&format!("Start Guessing({}): ", Wordle::trans_to_onum(cnt)).to_string(), self.tty, Some(true), Some(Color::Blue));
             // println!("{:?}", curstatus);
             loop {
                 input_word = Wordle::read();
                 if input_word.len() == 5 && self.acceptable_set.contains(&input_word) && self.check_hard_mod(&input_word, &curstatus, &status) {
                     break;
                 } else {
-                    Wordle::print("Key word format error or not in word list. Input again: ", self.tty, Some(false), Some(1));
+                    Wordle::print("Key word format error or not in word list. Input again: ", self.tty, Some(false), Some(Color::Red));
                     Wordle::testout("INVALID\n", self.tty);
                 }
             }
@@ -282,13 +290,13 @@ impl Wordle {
 
             // judement
             if input_word == self.key_word {
-                Wordle::println(&format!("CORRECT, guess time: {}", cnt).to_string(), self.tty, Some(true), Some(2));
+                Wordle::println(&format!("CORRECT, guess time: {}", cnt).to_string(), self.tty, Some(true), Some(Color::Green));
                 Wordle::testout(&format!("CORRECT {}\n", cnt).to_string(), self.tty);
                 win_tag = 1;
                 break;
             }
             if cnt == 6 {
-                Wordle::print("LOST, you failed too many times.", self.tty, Some(true), Some(1));
+                Wordle::print("LOST, you failed too many times.", self.tty, Some(true), Some(Color::Red));
                 Wordle::testout(&format!("FAILED {}\n", &self.key_word.to_uppercase()).to_string(), self.tty);
                 cnt = 0;
                 break;
@@ -434,13 +442,13 @@ fn game_day(matches: CliApp, first_tag: bool, day: u32, mut rounds: u32, mut win
     // arg hard_mod --difficult
     if matches.is_present("hard_mod") {
         hard_mod = true;
-        if first_tag { Wordle::println("Difficult mode: on", tty, Some(true), Some(1)); }
+        if first_tag { Wordle::println("Difficult mode: on", tty, Some(true), Some(Color::Red)); }
     }
 
     // arg stats --stats
     if matches.is_present("stats") {
         stats = true;
-        if first_tag { Wordle::println("Stats recording mode: on", tty, Some(true), Some(1)); }
+        if first_tag { Wordle::println("Stats recording mode: on", tty, Some(true), Some(Color::Red)); }
     }
 
     // arg acceptable_set_file --acceptable-set
@@ -503,7 +511,7 @@ fn game_day(matches: CliApp, first_tag: bool, day: u32, mut rounds: u32, mut win
     // arg: rand_mod --random
     if matches.is_present("rand_mod") {
         if matches.is_present("key_word") { return Err( ArgsErr("Random mode and key word input mode are conflict."))?; }
-        if first_tag { Wordle::println("Random key word mode", tty, Some(true), Some(1)); }
+        if first_tag { Wordle::println("Random key word mode", tty, Some(true), Some(Color::Red)); }
         let input_seed = matches.value_of("seed");
         match input_seed {
             None => {
@@ -521,8 +529,8 @@ fn game_day(matches: CliApp, first_tag: bool, day: u32, mut rounds: u32, mut win
         let mut rng = StdRng::seed_from_u64(seed);
         final_set.shuffle(&mut rng);
         key_word = final_set[day as usize].to_string();
-        Wordle::print("Random key: ", tty, Some(true), Some(3));
-        Wordle::println(&key_word, tty, Some(true), Some(2));
+        Wordle::print("Random key: ", tty, Some(true), Some(Color::Blue));
+        Wordle::println(&key_word, tty, Some(true), Some(Color::Green));
     } else {
         if matches.is_present("key_word") {
             let input_key_word = matches.value_of("key_word");
@@ -532,8 +540,8 @@ fn game_day(matches: CliApp, first_tag: bool, day: u32, mut rounds: u32, mut win
                     match w.parse::<String>() {
                         Ok(wd) if wd.len() == 5 && final_set.contains(&wd) => {
                             if first_tag {
-                                Wordle::print("Input key word found: ", tty, Some(true), Some(3));
-                                Wordle::println(&wd, tty, Some(true), Some(2));
+                                Wordle::print("Input key word found: ", tty, Some(true), Some(Color::Blue));
+                                Wordle::println(&wd, tty, Some(true), Some(Color::Green));
                             }
                             key_word = wd;
                         },
@@ -543,10 +551,10 @@ fn game_day(matches: CliApp, first_tag: bool, day: u32, mut rounds: u32, mut win
             };
         } else {
             loop {
-                Wordle::print("Please input your key word: ", tty, Some(true), Some(3));
+                Wordle::print("Please input your key word: ", tty, Some(true), Some(Color::Blue));
                 key_word = Wordle::read();
                 if key_word.len() == 5 && final_set.contains(&key_word) { break; }
-                else { Wordle::println("The input key word has an incorrect format or not be in the final words set.", tty, Some(true), Some(1)); }
+                else { Wordle::println("The input key word has an incorrect format or not be in the final words set.", tty, Some(true), Some(Color::Red)); }
             }
         }
     }
@@ -566,13 +574,13 @@ fn game_day(matches: CliApp, first_tag: bool, day: u32, mut rounds: u32, mut win
     // print stats
     if stats {
         // user output
-        Wordle::println("\nYour Stats:", tty, Some(true), Some(2));
+        Wordle::println("\nYour Stats:", tty, Some(true), Some(Color::Green));
         Wordle::println(&format!("Success rate: {}\nAverage trying times: {}", (win_rounds as f32) / (rounds as f32), match win_rounds { 0 => 0.0, _ => (try_times as f32) / (win_rounds as f32), }).to_string(), tty, None, None);
 
         // test output
         Wordle::testout(&format!("{} {} {:.2}\n", win_rounds, rounds - win_rounds, match win_rounds { 0 => 0.00, _ => (try_times as f32) / (win_rounds as f32), }), tty);
 
-        Wordle::println("Frequently used words:", tty, Some(true), Some(3));
+        Wordle::println("Frequently used words:", tty, Some(true), Some(Color::Blue));
         let mut count_vec: Vec<(&String, &u32)> = words.iter().collect();
         count_vec.sort_by(|a, b| a.0.cmp(b.0));
         count_vec.sort_by(|a, b| b.1.cmp(a.1));
@@ -587,7 +595,7 @@ fn game_day(matches: CliApp, first_tag: bool, day: u32, mut rounds: u32, mut win
         Wordle::testout("\n", tty);
     }
 
-    Wordle::print("Wanna play another round?(Y/N): ", tty, Some(true), Some(3));
+    Wordle::print("Wanna play another round?(Y/N): ", tty, Some(true), Some(Color::Blue));
     let choose: String = Wordle::read();
     if choose == "Y".to_string() { game_day(matches, false, day + 1, rounds, win_rounds, try_times, words, state, &state_file_path) }
     else { Ok(()) }
