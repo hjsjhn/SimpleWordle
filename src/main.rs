@@ -1,6 +1,7 @@
 mod builtin_words;
 
 use console;
+use serde_json;
 use std::{
     fs::File,
     io::{self, Write, BufRead, BufReader},
@@ -9,6 +10,35 @@ use std::{
 };
 use clap::{Arg, App, ArgMatches};
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
+use serde_derive::{Serialize, Deserialize};
+
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct Game {
+    answer: String,
+    guesses: Vec<String>,
+}
+
+impl Game {
+    fn new() -> Game {
+        Game { answer: "".to_string(), guesses: vec![] }
+    }
+}
+
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct State {
+    total_rounds: u32,
+    games: Vec<Game>,
+}
+
+impl State {
+    fn new() -> State {
+        State { total_rounds: 0, games: vec![] }
+    }
+}
 
 
 #[derive(Debug)]
@@ -164,7 +194,7 @@ impl Wordle {
         true
     }
 
-    fn play(&self, words_map: &mut HashMap<String, u32>) -> (u32, u32) {
+    fn play(&self, words_map: &mut HashMap<String, u32>) -> (u32, u32, Game) {
         let mut cnt: usize = 0;
         let mut win_tag: u32 = 0;
         let mut status = HashMap::new();
@@ -172,6 +202,8 @@ impl Wordle {
             status.insert(c, AlphStatus::Unknown);
         }
         let mut curstatus: Vec<AlphStatus> = vec![AlphStatus::TooMany; 5];
+        let mut game = Game::new();
+        game.answer = self.key_word.to_string().to_uppercase();
         loop {
             cnt = cnt + 1;
             let mut input_word = String::new();
@@ -187,6 +219,7 @@ impl Wordle {
                 }
             }
         
+            game.guesses.push(input_word.to_string().to_uppercase());
             *words_map.entry(input_word.to_string()).or_insert(0) += 1;
 
             //update status of the word
@@ -261,7 +294,7 @@ impl Wordle {
                 break;
             }
         }
-        (win_tag, cnt as u32)
+        (win_tag, cnt as u32, game)
     }
 }
 
@@ -271,8 +304,7 @@ fn lines_from_file(filename: impl AsRef<Path>) -> io::Result<Vec<String>> {
 }
 
 
-/// The main function for the Wordle game, implement your own logic here
-fn game_day(matches: ArgMatches, first_tag: bool, day: u32, mut rounds: u32, mut win_rounds: u32, mut try_times: u32, mut words: HashMap<String, u32>) -> Result<(), Box<dyn std::error::Error>> {
+fn game_day(matches: ArgMatches, first_tag: bool, day: u32, mut rounds: u32, mut win_rounds: u32, mut try_times: u32, mut words: HashMap<String, u32>, mut state: State, mut state_file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut final_set: Vec<String> = builtin_words::FINAL.iter().map(|s| s.to_string()).collect();
     let mut acceptable_set: Vec<String> = builtin_words::ACCEPTABLE.iter().map(|s| s.to_string()).collect();
     let mut key_word: String = String::new();
@@ -350,6 +382,7 @@ fn game_day(matches: ArgMatches, first_tag: bool, day: u32, mut rounds: u32, mut
         return Err (ArgsErr("-s/--seed and -d/--day can only be used in random mode."))?;
     }
 
+    // arg: rand_mod --random
     if matches.is_present("rand_mod") {
         if matches.is_present("key_word") { return Err( ArgsErr("Random mode and key word input mode are conflict."))?; }
         if first_tag { Wordle::println("Random key word mode", tty, Some(true), Some(1)); }
@@ -397,10 +430,16 @@ fn game_day(matches: ArgMatches, first_tag: bool, day: u32, mut rounds: u32, mut
     }
     let mut wordle = Wordle::new(key_word, hard_mod, stats, seed, tty, final_set, acceptable_set);
 
-    let (win, try_time) = wordle.play(&mut words);
+    let (win, try_time, new_game) = wordle.play(&mut words);
     rounds += 1;
     win_rounds += win;
     try_times += try_time;
+    state.total_rounds += 1;
+    state.games.push(new_game);
+    if state_file_path != "".to_string() {
+        let mut state_file = File::create(state_file_path)?;
+        state_file.write_all(serde_json::to_string_pretty(&state)?.as_bytes())?;
+    }
 
     // print stats
     if stats {
@@ -428,7 +467,7 @@ fn game_day(matches: ArgMatches, first_tag: bool, day: u32, mut rounds: u32, mut
 
     Wordle::print("Wanna play another round?(Y/N): ", tty, Some(true), Some(3));
     let choose: String = Wordle::read();
-    if choose == "Y".to_string() { game_day(matches, false, day + 1, rounds, win_rounds, try_times, words) }
+    if choose == "Y".to_string() { game_day(matches, false, day + 1, rounds, win_rounds, try_times, words, state, &state_file_path) }
     else { Ok(()) }
 }
 
@@ -479,6 +518,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .long("acceptable-set")
                 .takes_value(true)
                 .help("The file of the acceptable set of the key word."))
+        .arg(Arg::with_name("state_file")
+                .short('S')
+                .long("state")
+                .takes_value(true))
+                .help("The game state file to load previous games.")
         .get_matches();
 
     let mut day: u32 = 1;
@@ -491,5 +535,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     };
-    game_day(matches, true, day - 1, 0, 0, 0, HashMap::new())
+
+    let mut state: State = State::new();
+    let mut state_file = "".to_string();
+    match matches.value_of("state_file") {
+        None => {},
+        Some(pwd) => {
+            match pwd.parse::<String>() {
+                Ok(path) => {
+                    match File::open(&path) {
+                        Ok(file) => {
+                            state_file = path;
+                            match serde_json::from_reader(BufReader::new(file)) {
+                                Ok(st) => {
+                                    state = st;
+                                },
+                                Err(s) => return Err (s)?,
+                            };
+                        },
+                        Err(_) => return Err (ArgsErr("No input file of previous game state found."))?,
+                    }
+                }
+                Err(_) => return Err (ArgsErr("File path has a wrong format."))?,
+            }
+        }
+    };
+    if state.games.len() != (state.total_rounds as usize) { return Err (ArgsErr("Total_rounds and game rounds doesn't match."))?; }
+    let mut map: HashMap<String, u32> = HashMap::new();
+    let mut win_rounds: u32 = 0;
+    let mut try_times: u32 = 0;
+    for game in &state.games {
+        match game.guesses.len() {
+            0 => {},
+            len => {
+                if game.answer == game.guesses[len - 1] {
+                    win_rounds += 1;
+                    try_times += len as u32;
+                    for word in &game.guesses {
+                        *map.entry(word.to_lowercase()).or_insert(0) += 1;
+                    }
+                } 
+            }
+        }
+    }
+
+    game_day(matches, true, day - 1, state.total_rounds, win_rounds, try_times, map, state, &state_file)
 }

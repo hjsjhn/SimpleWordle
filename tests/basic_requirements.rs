@@ -58,7 +58,6 @@ fn test_06_5_pts_specify_word_list() {
     TestCase::read("06_02_invalid_word_list").run_and_expect_exit();
 }
 
-/*
 #[test]
 #[timeout(2000)]
 fn test_07_5_pts_save_game_state() {
@@ -70,6 +69,7 @@ fn test_07_5_pts_save_game_state() {
     TestCase::read("07_03_invalid_json_format").run_and_expect_exit();
 }
 
+/*
 #[test]
 #[timeout(2000)]
 fn test_08_5_pts_config_file() {
