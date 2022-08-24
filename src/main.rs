@@ -186,7 +186,6 @@ impl Wordle {
         let mut tmp:usize = 0;
         let mut ninput: Vec<char> = vec![];
         for (&c1, &c2) in self.key_word.chars().collect::<Vec<char>>().iter().zip(input.chars().collect::<Vec<char>>().iter()) {
-            // println!("{}: {:?}", tmp, curstatus[tmp]);
             if curstatus[tmp] == AlphStatus::Right {
                 if c1 != c2 { return false; }
             } else {
@@ -202,6 +201,40 @@ impl Wordle {
         true
     }
 
+    fn check_word(&self, input_word: &str, curstatus: &Vec<AlphStatus>, status: &HashMap<char, AlphStatus>) -> bool {
+        input_word.len() == 5 && self.acceptable_set.contains(&input_word.to_string()) && self.check_hard_mod(input_word, curstatus, status)
+    }
+
+    fn check_possible(input: &str, curstatus: &Vec<AlphStatus>, status: &HashMap<char, AlphStatus>, green_word: &Vec<char>) -> bool {
+        let word: String = input.to_string();
+        let mut tmp:usize = 0;
+        let mut ninput: Vec<char> = vec![];
+        for c in word.chars() {
+            if green_word[tmp] != '\0' && c != green_word[tmp] { return false; }
+            else { ninput.push(c); }
+            tmp += 1;
+        }
+        for c in Wordle::ALPHABET.chars() {
+            if *status.get(&c).unwrap() == AlphStatus::PosWrong {
+                if !ninput.contains(&c) { return false; }
+            }
+        }
+        true
+    }
+
+    fn recommend_word(&self, curstatus: &Vec<AlphStatus>, status: &HashMap<char, AlphStatus>, green_word: &Vec<char>) {
+        let mut cnt: u32 = 0;
+        Wordle::println("Possibly correct words:", true, Some(true), Some(Color::Blue));
+        for word in &self.acceptable_set {
+            if cnt > 5 { print!("..."); break; }
+            if Wordle::check_possible(&word, curstatus, status, green_word) {
+                print!("{}{}", match cnt{0=>"",_=>" "}, &word.to_uppercase());
+                cnt += 1;
+            }
+        }
+        println!("");
+    }
+
     fn play(&self, words_map: &mut HashMap<String, u32>) -> (u32, u32, Game) {
         let mut cnt: usize = 0;
         let mut win_tag: u32 = 0;
@@ -210,16 +243,20 @@ impl Wordle {
             status.insert(c, AlphStatus::Unknown);
         }
         let mut curstatus: Vec<AlphStatus> = vec![AlphStatus::TooMany; 5];
+        let mut green_word: Vec<char> = vec!['\0'; 5];
         let mut game = Game::new();
         game.answer = self.key_word.to_string().to_uppercase();
         loop {
             cnt = cnt + 1;
             let mut input_word = String::new();
+            if self.tty && cnt != 1 {
+                self.recommend_word(&curstatus, &status, &green_word);
+            }
             Wordle::print(&format!("Start Guessing({}): ", Wordle::trans_to_onum(cnt)).to_string(), self.tty, Some(true), Some(Color::Blue));
             // println!("{:?}", curstatus);
             loop {
                 input_word = Wordle::read();
-                if input_word.len() == 5 && self.acceptable_set.contains(&input_word) && self.check_hard_mod(&input_word, &curstatus, &status) {
+                if self.check_word(&input_word, &curstatus, &status) {
                     break;
                 } else {
                     Wordle::print("Key word format error or not in word list. Input again: ", self.tty, Some(false), Some(Color::Red));
@@ -238,6 +275,7 @@ impl Wordle {
                 let count = map.entry(c1).or_insert(0);
                 if c1 == c2 {
                     curstatus[tmp] = AlphStatus::Right;
+                    green_word[tmp] = c1.clone();
                 } else {
                     *count += 1;
                 }
