@@ -38,7 +38,6 @@ fn test_04_5_pts_continue_game_and_statistics() {
     TestCase::read("04_02_statistics_2").run_and_compare_result();
 }
 
-/*
 #[test]
 #[timeout(3000)]
 fn test_05_5_pts_specify_offset_and_seed() {
@@ -59,6 +58,7 @@ fn test_06_5_pts_specify_word_list() {
     TestCase::read("06_02_invalid_word_list").run_and_expect_exit();
 }
 
+/*
 #[test]
 #[timeout(2000)]
 fn test_07_5_pts_save_game_state() {

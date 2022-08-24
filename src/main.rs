@@ -1,8 +1,12 @@
 mod builtin_words;
 
 use console;
-use std::io::{self, Write};
-use std::collections::HashMap;
+use std::{
+    fs::File,
+    io::{self, Write, BufRead, BufReader},
+    path::Path,
+    collections::{HashMap, HashSet},
+};
 use clap::{Arg, App, ArgMatches};
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 
@@ -262,6 +266,11 @@ impl Wordle {
 }
 
 
+fn lines_from_file(filename: impl AsRef<Path>) -> io::Result<Vec<String>> {
+    BufReader::new(File::open(filename)?).lines().collect()
+}
+
+
 /// The main function for the Wordle game, implement your own logic here
 fn game_day(matches: ArgMatches, first_tag: bool, day: u32, mut rounds: u32, mut win_rounds: u32, mut try_times: u32, mut words: HashMap<String, u32>) -> Result<(), Box<dyn std::error::Error>> {
     let mut final_set: Vec<String> = builtin_words::FINAL.iter().map(|s| s.to_string()).collect();
@@ -272,14 +281,73 @@ fn game_day(matches: ArgMatches, first_tag: bool, day: u32, mut rounds: u32, mut
     let mut stats: bool = false;
     let tty: bool = atty::is(atty::Stream::Stdout);
 
+    // arg hard_mod --difficult
     if matches.is_present("hard_mod") {
         hard_mod = true;
         if first_tag { Wordle::println("Difficult mode: on", tty, Some(true), Some(1)); }
     }
 
+    // arg stats --stats
     if matches.is_present("stats") {
         stats = true;
         if first_tag { Wordle::println("Stats recording mode: on", tty, Some(true), Some(1)); }
+    }
+
+    // arg acceptable_set_file --acceptable-set
+    if matches.is_present("acceptable_set_file") {
+        match matches.value_of("acceptable_set_file") {
+            None => return Err (ArgsErr("No input file of acceptable set found."))?,
+            Some(pwd) => {
+                match pwd.parse::<String>() {
+                    Ok(path) => {
+                        match lines_from_file(path) {
+                            Ok(lines) => acceptable_set = lines,
+                            Err(_) => return Err (ArgsErr("Could not load acceptable set."))?,
+                        }
+                    }
+                    Err(_) => return Err (ArgsErr("File path has a wrong format."))?,
+                }
+            }
+        };
+        acceptable_set = acceptable_set.iter().map(|s| s.to_lowercase()).collect();
+        acceptable_set.sort_unstable();
+        acceptable_set.dedup();
+
+        for word in &acceptable_set {
+            if word.len() != 5 { return Err (ArgsErr("The acceptable words set has incorrect word."))?; }
+        }
+    }
+
+    // arg final_set_file --final-set
+    if matches.is_present("final_set_file") {
+        match matches.value_of("final_set_file") {
+            None => return Err (ArgsErr("No input file of final set found."))?,
+            Some(pwd) => {
+                match pwd.parse::<String>() {
+                    Ok(path) => {
+                        match lines_from_file(path) {
+                            Ok(lines) => final_set = lines,
+                            Err(_) => return Err (ArgsErr("Could not load final set."))?,
+                        }
+                    }
+                    Err(_) => return Err (ArgsErr("File path has a wrong format."))?,
+                }
+            }
+        };
+        final_set = final_set.iter().map(|s| s.to_lowercase()).collect();
+        final_set.sort_unstable();
+        final_set.dedup();
+
+        for word in &final_set {
+            if word.len() != 5 { return Err (ArgsErr("The final words set has incorrect word."))?; }
+        }
+        let acc_set: HashSet<_> = acceptable_set.iter().cloned().collect();
+        if !final_set.iter().all(|word| acc_set.contains(word)) { return Err (ArgsErr("Every word in the final set should be covered in the acceptable set."))?; }
+    }
+
+    // handle args confict
+    if (matches.is_present("seed") || matches.is_present("day")) && !matches.is_present("rand_mod") {
+        return Err (ArgsErr("-s/--seed and -d/--day can only be used in random mode."))?;
     }
 
     if matches.is_present("rand_mod") {
@@ -391,6 +459,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .long("stats")
                 .takes_value(false)
                 .help("Toggle to output your stats of the game after every single round.")) 
+        .arg(Arg::with_name("day")
+                .short('d')
+                .long("day")
+                .takes_value(true)
+                .help("The day that you wanna start your game."))
         .arg(Arg::with_name("seed")
                 .short('s')
                 .long("seed")
@@ -408,5 +481,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("The file of the acceptable set of the key word."))
         .get_matches();
 
-    game_day(matches, true, 0, 0, 0, 0, HashMap::new())
+    let mut day: u32 = 1;
+    match matches.value_of("day") {
+        None => {},
+        Some(d) => {
+            match d.parse::<u32>() {
+                Ok(dy) => day = dy,
+                Err(_) => return Err( ArgsErr("The format of -d/--day is wrong."))?,
+            }
+        }
+    };
+    game_day(matches, true, day - 1, 0, 0, 0, HashMap::new())
 }
