@@ -69,7 +69,6 @@ fn test_07_5_pts_save_game_state() {
     TestCase::read("07_03_invalid_json_format").run_and_expect_exit();
 }
 
-/*
 #[test]
 #[timeout(2000)]
 fn test_08_5_pts_config_file() {
@@ -78,4 +77,3 @@ fn test_08_5_pts_config_file() {
     // override config in command line options
     TestCase::read("08_02_config_override").run_and_compare_result();
 }
-*/

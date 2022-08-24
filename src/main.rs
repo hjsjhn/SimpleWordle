@@ -299,12 +299,130 @@ impl Wordle {
 }
 
 
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(default)]
+struct Config {
+    random: Option<bool>,
+    difficult: Option<bool>,
+    stats: Option<bool>,
+    day: Option<u32>,
+    seed: Option<u64>,
+    final_set: Option<String>,
+    acceptable_set: Option<String>,
+    state: Option<String>,
+    word: Option<String>,
+}
+
+impl Config {
+    fn new() -> Config {
+        Config { random: None, difficult: None, stats: None, day: None, seed: None, final_set: None, acceptable_set: None, state: None, word: None }
+    }
+}
+
+
+struct CliApp {
+    cli_args: ArgMatches,
+    config: Config,
+}
+
+impl CliApp {
+    
+    fn is_present(&self, arg: &str) -> bool {
+        // let conf = self.get_conf(arg);
+        match arg {
+            "rand_mod" => self.cli_args.is_present(arg) | (self.config.random.is_some() && self.config.random.unwrap()),
+            "hard_mod" => self.cli_args.is_present(arg) | (self.config.difficult.is_some() && self.config.difficult.unwrap()),
+            "stats" => self.cli_args.is_present(arg) | (self.config.stats.is_some() && self.config.stats.unwrap()),
+            "day" => self.cli_args.is_present(arg) | (self.config.day != None),
+            "seed" => self.cli_args.is_present(arg) | (self.config.seed != None),
+            "key_word" => self.cli_args.is_present(arg) | (self.config.word != None),
+            "final_set_file" => self.cli_args.is_present(arg) | (self.config.final_set != None),
+            "acceptable_set_file" => self.cli_args.is_present(arg) | (self.config.acceptable_set != None),
+            "state_file" => self.cli_args.is_present(arg) | (self.config.state != None),
+            _ => false,
+        }
+    }
+    
+    fn value_of(&self, arg: &str) -> Option<&str> {
+        match arg {
+            "key_word" => { match &self.config.word { None => self.cli_args.value_of(arg), Some(s) => { if self.cli_args.value_of(arg).is_some() { self.cli_args.value_of(arg) } else { Some(s.as_str()) }} , }},
+            "final_set_file" => { match &self.config.final_set { None => self.cli_args.value_of(arg), Some(s) => { if self.cli_args.value_of(arg).is_some() { self.cli_args.value_of(arg) } else { Some(s.as_str()) }} , }},
+            "acceptable_set_file" => { match &self.config.acceptable_set { None => self.cli_args.value_of(arg), Some(s) => { if self.cli_args.value_of(arg).is_some() { self.cli_args.value_of(arg) } else { Some(s.as_str()) }} , }},
+            "state_file" => { match &self.config.state { None => self.cli_args.value_of(arg), Some(s) => { if self.cli_args.value_of(arg).is_some() { self.cli_args.value_of(arg) } else { Some(s.as_str()) }} , }},
+            "day" => self.cli_args.value_of(arg),
+            "seed" => self.cli_args.value_of(arg),
+            _ => Some(""),
+        }
+    }
+
+    fn new() -> CliApp {
+        CliApp { cli_args:
+             App::new("Wordle")
+            .version("0.1.0")
+            .author("Jashng")
+            .about("A simple wordle game in Rust.")
+            .arg(Arg::with_name("key_word")
+                    .short('w')
+                    .long("word")
+                    .takes_value(true)
+                    .help("The key word for specifying the answer."))
+            .arg(Arg::with_name("rand_mod")
+                    .short('r')
+                    .long("random")
+                    .takes_value(false)
+                    .help("Toggle to turn on random key word mode."))
+            .arg(Arg::with_name("hard_mod")
+                    .short('D')
+                    .long("difficult")
+                    .takes_value(false)
+                    .help("Toggle to turn on difficult mode."))
+            .arg(Arg::with_name("stats")
+                    .short('t')
+                    .long("stats")
+                    .takes_value(false)
+                    .help("Toggle to output your stats of the game after every single round.")) 
+            .arg(Arg::with_name("day")
+                    .short('d')
+                    .long("day")
+                    .takes_value(true)
+                    .help("The day that you wanna start your game."))
+            .arg(Arg::with_name("seed")
+                    .short('s')
+                    .long("seed")
+                    .takes_value(true)
+                    .help("The random seed for generating a key word."))
+            .arg(Arg::with_name("final_set_file")
+                    .short('f')
+                    .long("final-set")
+                    .takes_value(true)
+                    .help("The file of the final set of the key word."))
+            .arg(Arg::with_name("acceptable_set_file")
+                    .short('a')
+                    .long("acceptable-set")
+                    .takes_value(true)
+                    .help("The file of the acceptable set of the key word."))
+            .arg(Arg::with_name("state_file")
+                    .short('S')
+                    .long("state")
+                    .takes_value(true)
+                    .help("The game state file to load previous games."))
+            .arg(Arg::with_name("config")
+                    .short('c')
+                    .long("config")
+                    .takes_value(true)
+                    .help("The config file of input args."))
+            .get_matches(), 
+            config: Config::new(), }
+    }
+}
+
+
 fn lines_from_file(filename: impl AsRef<Path>) -> io::Result<Vec<String>> {
     BufReader::new(File::open(filename)?).lines().collect()
 }
 
 
-fn game_day(matches: ArgMatches, first_tag: bool, day: u32, mut rounds: u32, mut win_rounds: u32, mut try_times: u32, mut words: HashMap<String, u32>, mut state: State, mut state_file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn game_day(matches: CliApp, first_tag: bool, day: u32, mut rounds: u32, mut win_rounds: u32, mut try_times: u32, mut words: HashMap<String, u32>, mut state: State, mut state_file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut final_set: Vec<String> = builtin_words::FINAL.iter().map(|s| s.to_string()).collect();
     let mut acceptable_set: Vec<String> = builtin_words::ACCEPTABLE.iter().map(|s| s.to_string()).collect();
     let mut key_word: String = String::new();
@@ -388,7 +506,11 @@ fn game_day(matches: ArgMatches, first_tag: bool, day: u32, mut rounds: u32, mut
         if first_tag { Wordle::println("Random key word mode", tty, Some(true), Some(1)); }
         let input_seed = matches.value_of("seed");
         match input_seed {
-            None => {}
+            None => {
+                if matches.config.seed.is_some() {
+                    seed = matches.config.seed.unwrap();
+                }
+            }
             Some(s) => {
                 match s.parse::<u64>() {
                     Ok(se) => seed = se,
@@ -474,60 +596,36 @@ fn game_day(matches: ArgMatches, first_tag: bool, day: u32, mut rounds: u32, mut
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // get the matches of args from command line
-    let matches = App::new("Wordle")
-        .version("0.1.0")
-        .author("Jashng")
-        .about("A simple wordle game in Rust.")
-        .arg(Arg::with_name("key_word")
-                .short('w')
-                .long("word")
-                .takes_value(true)
-                .help("The key word for specifying the answer."))
-        .arg(Arg::with_name("rand_mod")
-                .short('r')
-                .long("random")
-                .takes_value(false)
-                .help("Toggle to turn on random key word mode."))
-        .arg(Arg::with_name("hard_mod")
-                .short('D')
-                .long("difficult")
-                .takes_value(false)
-                .help("Toggle to turn on difficult mode."))
-        .arg(Arg::with_name("stats")
-                .short('t')
-                .long("stats")
-                .takes_value(false)
-                .help("Toggle to output your stats of the game after every single round.")) 
-        .arg(Arg::with_name("day")
-                .short('d')
-                .long("day")
-                .takes_value(true)
-                .help("The day that you wanna start your game."))
-        .arg(Arg::with_name("seed")
-                .short('s')
-                .long("seed")
-                .takes_value(true)
-                .help("The random seed for generating a key word."))
-        .arg(Arg::with_name("final_set_file")
-                .short('f')
-                .long("final-set")
-                .takes_value(true)
-                .help("The file of the final set of the key word."))
-        .arg(Arg::with_name("acceptable_set_file")
-                .short('a')
-                .long("acceptable-set")
-                .takes_value(true)
-                .help("The file of the acceptable set of the key word."))
-        .arg(Arg::with_name("state_file")
-                .short('S')
-                .long("state")
-                .takes_value(true))
-                .help("The game state file to load previous games.")
-        .get_matches();
+    let mut matches = CliApp::new();
+    match matches.cli_args.value_of("config") {
+        None => {},
+        Some(pwd) => {
+            match pwd.parse::<String>() {
+                Ok(path) => {
+                    match File::open(&path) {
+                        Ok(file) => {
+                            match serde_json::from_reader::<BufReader<std::fs::File>, Config>(BufReader::new(file)) {
+                                Ok(conf) => {
+                                    matches.config = conf;
+                                },
+                                Err(s) => return Err (s)?,
+                            };
+                        },
+                        Err(_) => return Err (ArgsErr("No input file of args config found."))?,
+                    }
+                }
+                Err(_) => return Err (ArgsErr("File path has a wrong format."))?,
+            }
+        }
+    };
 
     let mut day: u32 = 1;
     match matches.value_of("day") {
-        None => {},
+        None => {
+            if matches.config.day.is_some() {
+                day = matches.config.day.unwrap();
+            }
+        },
         Some(d) => {
             match d.parse::<u32>() {
                 Ok(dy) => day = dy,
