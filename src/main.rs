@@ -70,7 +70,7 @@ struct Wordle {
 
 impl Wordle {
     const SEED: u64 = 19260817998244353;
-    const ALPHABET: &str = "abcdefghijklmnopqrstuvwxyz";
+    const ALPHABET: &'static str = "abcdefghijklmnopqrstuvwxyz";
 
     fn printall(pln: bool, words: &str, tty: bool, bold: Option<bool>, color: Option<u32>) {
         if tty {
