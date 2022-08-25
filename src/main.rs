@@ -289,7 +289,7 @@ impl Wordle {
         let mut count_vec: Vec<(&String, &f32)> = words.iter().collect();
         count_vec.sort_by(|a, b| a.0.cmp(b.0));
         count_vec.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
-        println!("I recommend you use:");
+        Wordle::println("I recommend you use:", true, Some(true), Some(Color::Blue));
         for (index, value) in count_vec.iter().enumerate() {
             if index > 4 { break; }
             print!("{}{}", match index {0=>"",_=>", "}, value.0.to_uppercase());
