@@ -205,11 +205,16 @@ impl Wordle {
         input_word.len() == 5 && self.acceptable_set.contains(&input_word.to_string()) && self.check_hard_mod(input_word, curstatus, status)
     }
 
-    fn check_possible(input: &str, curstatus: &Vec<AlphStatus>, status: &HashMap<char, AlphStatus>, green_word: &Vec<char>) -> bool {
+    fn check_possible(input: &str, status: &HashMap<char, AlphStatus>, green_word: &Vec<char>, numbers: &mut HashMap<char, i32>, forbid: &mut HashMap<char, Vec<u32>>) -> bool {
         let word: String = input.to_string();
         let mut tmp:usize = 0;
         let mut ninput: Vec<char> = vec![];
+        let mut cnt_map: HashMap<char, i32> = HashMap::new();
+        for c in word.chars() { *cnt_map.entry(c).or_insert(0) += 1; }
         for c in word.chars() {
+            if forbid.entry(c).or_insert(vec![]).contains(&(tmp as u32)) { return false; }
+            let cnt = (*numbers).entry(c).or_insert(-1);
+            if *cnt != -1 && *cnt_map.get(&c).unwrap() != *cnt { return false; }
             if green_word[tmp] != '\0' && c != green_word[tmp] { return false; }
             else { ninput.push(c); }
             tmp += 1;
@@ -222,15 +227,72 @@ impl Wordle {
         true
     }
 
-    fn recommend_word(&self, curstatus: &Vec<AlphStatus>, status: &HashMap<char, AlphStatus>, green_word: &Vec<char>) {
+    fn recommend_word(&self, status: &HashMap<char, AlphStatus>, green_word: &Vec<char>, numbers: &mut HashMap<char, i32>, forbid: &mut HashMap<char, Vec<u32>>) {
         let mut cnt: u32 = 0;
+        let mut possible_word: Vec<String> = vec![];
         Wordle::println("Possibly correct words:", true, Some(true), Some(Color::Blue));
         for word in &self.acceptable_set {
-            if cnt > 5 { print!("..."); break; }
-            if Wordle::check_possible(&word, curstatus, status, green_word) {
-                print!("{}{}", match cnt{0=>"",_=>" "}, &word.to_uppercase());
+            if cnt == 5 { print!("..."); cnt += 1; }
+            if Wordle::check_possible(&word, status, green_word, numbers, forbid) {
+                if cnt < 5 { print!("{}{}", match cnt{0=>"",_=>" "}, &word.to_uppercase()); }
+                possible_word.push(word.to_string());
                 cnt += 1;
             }
+        }
+        println!("");
+
+        // a slow way to calculate shanon information enrtopy
+        let total: u32 = possible_word.len() as u32;
+        let mut words: HashMap<String, f32> = HashMap::new();
+        for word in &possible_word {
+            let mut cnt: Vec<u32> = vec![0; 243]; //243=3^5 which present all the states
+            for input in &possible_word {
+                if word != input {
+                    let mut map = HashMap::new();
+                    let mut curstatus = vec![0; 5];
+                    let mut tmp:usize = 0;
+                    for (&c1, &c2) in word.chars().collect::<Vec<char>>().iter().zip(input.chars().collect::<Vec<char>>().iter()) {
+                        let count = map.entry(c1).or_insert(0);
+                        if c1 == c2 {
+                            curstatus[tmp] = 2;
+                        } else {
+                            *count += 1;
+                        }
+                        tmp += 1;
+                    }
+                    tmp = 0;
+                    for c in input.chars() {
+                        let count = map.entry(c).or_insert(0);
+                        if *count > 0 && curstatus[tmp] != 2 {
+                            curstatus[tmp] = 1;
+                            *count -= 1;
+                        }
+                        tmp += 1;
+                    }
+                    let mut st: u32 = 0;
+                    let mut base: u32 = 1;
+                    for i in 0..5 {
+                        st += base * curstatus[i];
+                        base = base * 3;
+                    }
+                    cnt[st as usize] += 1;
+                }
+            }
+            let mut ans: f32 = 0.0;
+            for i in 0..243 {
+                if cnt[i] != 0 {
+                    ans -= (cnt[i] as f32) / (total as f32) * ((cnt[i] as f32) / (total as f32)).log2();
+                }
+            }
+            words.insert(word.to_string(), ans);
+        }
+        let mut count_vec: Vec<(&String, &f32)> = words.iter().collect();
+        count_vec.sort_by(|a, b| a.0.cmp(b.0));
+        count_vec.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+        println!("I recommend you use:");
+        for (index, value) in count_vec.iter().enumerate() {
+            if index > 4 { break; }
+            print!("{}{}", match index {0=>"",_=>", "}, value.0.to_uppercase());
         }
         println!("");
     }
@@ -244,13 +306,16 @@ impl Wordle {
         }
         let mut curstatus: Vec<AlphStatus> = vec![AlphStatus::TooMany; 5];
         let mut green_word: Vec<char> = vec!['\0'; 5];
+        let mut numbers: HashMap<char, i32> = HashMap::new();
+        let mut forbid: HashMap<char, Vec<u32>> = HashMap::new();
         let mut game = Game::new();
         game.answer = self.key_word.to_string().to_uppercase();
+
         loop {
             cnt = cnt + 1;
             let mut input_word = String::new();
             if self.tty && cnt != 1 {
-                self.recommend_word(&curstatus, &status, &green_word);
+                self.recommend_word(&status, &green_word, &mut numbers, &mut forbid);
             }
             Wordle::print(&format!("Start Guessing({}): ", Wordle::trans_to_onum(cnt)).to_string(), self.tty, Some(true), Some(Color::Blue));
             // println!("{:?}", curstatus);
@@ -269,12 +334,14 @@ impl Wordle {
 
             //update status of the word
             let mut map = HashMap::new();
+            let mut cnt_map = HashMap::new();
             curstatus = vec![AlphStatus::TooMany; 5];
             let mut tmp:usize = 0;
             for (&c1, &c2) in self.key_word.chars().collect::<Vec<char>>().iter().zip(input_word.chars().collect::<Vec<char>>().iter()) {
                 let count = map.entry(c1).or_insert(0);
                 if c1 == c2 {
                     curstatus[tmp] = AlphStatus::Right;
+                    *cnt_map.entry(c2).or_insert(0) += 1;
                     green_word[tmp] = c1.clone();
                 } else {
                     *count += 1;
@@ -286,7 +353,12 @@ impl Wordle {
                 let count = map.entry(c).or_insert(0);
                 if *count > 0 && curstatus[tmp] != AlphStatus::Right {
                     curstatus[tmp] = AlphStatus::PosWrong;
+                    *cnt_map.entry(c).or_insert(0) += 1;
+                    (*forbid.entry(c).or_insert(vec![])).push(tmp as u32);
                     *count -= 1;
+                }
+                if curstatus[tmp] == AlphStatus::TooMany {
+                    *numbers.entry(c).or_insert(-1) = *cnt_map.entry(c).or_insert(0);
                 }
                 tmp += 1;
             }
@@ -334,7 +406,7 @@ impl Wordle {
                 break;
             }
             if cnt == 6 {
-                Wordle::print("LOST, you failed too many times.", self.tty, Some(true), Some(Color::Red));
+                Wordle::println("LOST, you failed too many times.", self.tty, Some(true), Some(Color::Red));
                 Wordle::testout(&format!("FAILED {}\n", &self.key_word.to_uppercase()).to_string(), self.tty);
                 cnt = 0;
                 break;
