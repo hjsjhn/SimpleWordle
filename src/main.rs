@@ -378,12 +378,13 @@ impl Wordle {
                 break;
             }
             print!(
-                "{}{}",
+                "{}{}({:.2} Bits)",
                 match index {
                     0 => "",
                     _ => ", ",
                 },
-                value.0.to_uppercase()
+                value.0.to_uppercase(),
+                value.1
             );
         }
         println!("");
