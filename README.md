@@ -44,12 +44,14 @@ OPTIONS:
 ```
 # Installation
 ## Requirement
-You can use `cargo` to build the project easily.
+Use `cargo` to build the project easily.
+
 Install the rust package manager `cargo` with `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh` .
 ## Build
-Clone this repo with `git clone https://github.com/hjsjhn/SimpleWordle.git` and simply use `cargo build` to get a binary file.
+Clone this repo with `git clone https://github.com/hjsjhn/SimpleWordle.git` and simply use `cargo build --release` to get a binary file `target/release/wordle`.
 # Features
 There is a word recommender that recommend you the next word you should guess.
+
 Also there's a wordle-solver program inside, you can build the file `src/wordle-solver` and use it.
 # Screenshot
 ![](images/game_screenshot.png)
